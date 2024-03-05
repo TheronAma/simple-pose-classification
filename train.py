@@ -94,6 +94,8 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--gpu", type=int, default=0)
     parser.add_argument("--dataset", default="datasets/jackrabbot")
+    parser.add_argument("--project", default="pose-classification")
+    parser.add_argument("--run", default="train")
     args = parser.parse_args()
 
     torch.set_default_dtype(torch.float32)
@@ -102,9 +104,9 @@ if __name__=="__main__":
     if torch.cuda.is_available(): torch.cuda.set_device(args.gpu)
 
     wandb_run = wandb.init(
-        name="init-model-small-split",
+        name=args.run,
         reinit=True,
-        project="pose-classification",
+        project=args.project,
         config=config
     )
 
