@@ -13,6 +13,7 @@ class PoseClassifier(torch.nn.Module):
 
         self.model = torch.nn.Sequential(
             torch.nn.Linear(input_size, hidden_size),
+            torch.nn.Dropout(0.1),
             nonlinearity(),
             torch.nn.Linear(hidden_size, hidden_size),
             nonlinearity(),

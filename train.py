@@ -1,4 +1,5 @@
 import torch
+import os
 import argparse
 import wandb
 import numpy as np
@@ -6,14 +7,15 @@ from tqdm import tqdm
 from data.dataloader import PoseDataset
 from data.constants import ACTIONS
 from model.pose_classifier import PoseClassifier
+from visualization.vis import visualize_incorrect_pose
 
 config = {
-        "epochs" : 50,
+        "epochs" : 25,
         "hidden_size" : 256,
-        "batch_size" : 256,
+        "batch_size" : 128,
         "init_lr" : 0.01,
         "momentum" : 0.9,
-        "weight_decay" : 1e-4
+        "weight_decay" : 1e-3
         }
 
 def eval(model, dataloader, criterion):
@@ -21,6 +23,8 @@ def eval(model, dataloader, criterion):
     model.eval()
     vloss, vacc =  0, 0
     batch_bar = tqdm(total=len(dataloader), dynamic_ncols=True, position=0, leave=False, desc="val")
+
+    num_vis = 0
 
     for i, (poses, actions) in enumerate(dataloader):
 
@@ -37,6 +41,17 @@ def eval(model, dataloader, criterion):
         batch_bar.set_postfix(loss="{:.04f}".format(float(vloss / (i + 1))),
                               acc="{:.04f}%".format(float(vacc*100 / (i + 1))))
         batch_bar.update()
+
+        pred_actions = torch.argmax(logits, dim=1)
+
+        for j, action in enumerate(actions):
+            if num_vis < 50 and pred_actions[j] != actions[j]:
+                num_vis += 1
+                os.makedirs(f"vis/{epoch:04d}", exist_ok=True)
+                visualize_incorrect_pose(f"vis/{epoch:04d}/{j:02d}.png", 
+                        poses[j],
+                        ACTIONS[action],
+                        ACTIONS[pred_actions[j]])
 
         del actions, poses, logits
 
@@ -96,6 +111,7 @@ if __name__=="__main__":
     parser.add_argument("--dataset", default="datasets/jackrabbot")
     parser.add_argument("--project", default="pose-classification")
     parser.add_argument("--run", default="train")
+    parser.add_argument("--vis", action="store_true")
     args = parser.parse_args()
 
     torch.set_default_dtype(torch.float32)
@@ -136,6 +152,8 @@ if __name__=="__main__":
     optimizer = torch.optim.SGD(model.parameters(), lr=config["init_lr"], momentum=config["momentum"], weight_decay=config["weight_decay"])
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=2, threshold=1e-4, factor=0.75, mode="max")
 
+    last_vacc = 0
+
     for epoch in range(config["epochs"]):
         tloss, tacc = train(model, train_loader, optimizer, criterion)
         vloss, vacc = eval(model, val_loader, criterion)
@@ -147,3 +165,6 @@ if __name__=="__main__":
         wandb.log({"train_loss":tloss, 'train_Acc': tacc, 'validation_Acc':vacc,
                    'validation_loss': vloss, "learning_Rate": float(optimizer.param_groups[0]['lr'])})
 
+        if vacc > last_vacc:
+            torch.save({ "state_dict" : model.state_dict() }, "checkpoint.pth")
+            last_vacc = vacc
